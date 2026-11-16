@@ -1,0 +1,155 @@
+
+# %% CELL 1: Install required packages
+%pip install -q tensorflow numpy pandas matplotlib scikit-learn
+
+# %% CELL 2: Import libraries
+import numpy as np
+import pandas as pd
+import tensorflow as tf
+import matplotlib.pyplot as plt
+
+from pathlib import Path
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.metrics import accuracy_score, classification_report
+
+# %% CELL 3: Load uploaded ECG dataset
+file_path = Path.cwd() / "ecg.csv"
+
+if not file_path.exists():
+    raise FileNotFoundError("Upload ecg.csv using Jupyter Upload first.")
+
+data = pd.read_csv(file_path)
+
+print("Dataset shape:", data.shape)
+print(data.head())
+
+# %% CELL 4: Separate features and labels
+X = data.iloc[:, :-1].values
+y = data.iloc[:, -1].values.astype(int)
+
+print("Features shape:", X.shape)
+print("Labels shape:", y.shape)
+print("Unique labels:", np.unique(y))
+
+# %% CELL 5: Split dataset
+X_train, X_test, y_train, y_test = train_test_split(
+    X,
+    y,
+    test_size=0.2,
+    stratify=y,
+    random_state=42
+)
+
+# Novelty detection: train only on normal class 1
+X_train_normal = X_train[y_train == 1]
+
+print("Normal training samples:", X_train_normal.shape)
+
+# %% CELL 6: Scale data
+scaler = MinMaxScaler()
+
+X_train_scaled = scaler.fit_transform(X_train_normal)
+X_test_scaled = scaler.transform(X_test)
+
+# %% CELL 7: Build Autoencoder
+input_dim = X_train_scaled.shape[1]
+
+model = tf.keras.Sequential([
+    tf.keras.layers.Input(shape=(input_dim,)),
+
+    # Encoder: four layers
+    tf.keras.layers.Dense(64, activation="relu"),
+    tf.keras.layers.Dense(32, activation="relu"),
+    tf.keras.layers.Dense(16, activation="relu"),
+    tf.keras.layers.Dense(8, activation="relu"),
+
+    # Decoder: four layers
+    tf.keras.layers.Dense(16, activation="relu"),
+    tf.keras.layers.Dense(32, activation="relu"),
+    tf.keras.layers.Dense(64, activation="relu"),
+    tf.keras.layers.Dense(input_dim, activation="sigmoid")
+])
+
+model.summary()
+
+# %% CELL 8: Compile model
+model.compile(
+    optimizer=tf.keras.optimizers.Adam(),
+    loss=tf.keras.losses.MeanSquaredLogarithmicError(),
+    metrics=["mse"]
+)
+
+# %% CELL 9: Train model
+history = model.fit(
+    X_train_scaled,
+    X_train_scaled,
+    epochs=20,
+    batch_size=512,
+    validation_split=0.1,
+    shuffle=True
+)
+
+# %% CELL 10: Find anomaly threshold
+train_predictions = model.predict(
+    X_train_scaled, verbose=0
+)
+
+train_errors = tf.keras.losses.msle(
+    X_train_scaled,
+    train_predictions
+).numpy()
+
+threshold = np.mean(train_errors) + np.std(train_errors)
+
+print("Anomaly threshold:", threshold)
+
+# %% CELL 11: Predict anomalies
+test_predictions = model.predict(
+    X_test_scaled, verbose=0
+)
+
+test_errors = tf.keras.losses.msle(
+    X_test_scaled,
+    test_predictions
+).numpy()
+
+# Normal = 1, Anomaly = 0
+y_pred = np.where(test_errors > threshold, 0, 1)
+
+# %% CELL 12: Evaluate model
+accuracy = accuracy_score(y_test, y_pred)
+
+print("Accuracy:", accuracy)
+print(classification_report(
+    y_test,
+    y_pred,
+    target_names=["Anomaly", "Normal"],
+    zero_division=0
+))
+
+# %% CELL 13: Plot training loss
+plt.plot(history.history["loss"], label="Training Loss")
+plt.plot(history.history["val_loss"], label="Validation Loss")
+
+plt.xlabel("Epoch")
+plt.ylabel("MSLE Loss")
+plt.title("Autoencoder Training Loss")
+plt.legend()
+plt.show()
+
+# %% CELL 14: Plot anomaly errors
+plt.figure(figsize=(12, 5))
+
+plt.hist(test_errors, bins=50)
+plt.axvline(
+    threshold,
+    linestyle="--",
+    label="Anomaly Threshold"
+)
+
+plt.xlabel("Reconstruction Error")
+plt.ylabel("Frequency")
+plt.title("ECG Anomaly Detection")
+plt.legend()
+plt.show()

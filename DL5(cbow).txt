@@ -1,0 +1,200 @@
+
+# %% CELL 1: Install required packages
+%pip install -q tensorflow numpy matplotlib scikit-learn
+
+# %% CELL 2: Import libraries
+import re
+import numpy as np
+import tensorflow as tf
+import matplotlib.pyplot as plt
+
+from pathlib import Path
+from sklearn.metrics.pairwise import cosine_similarity
+
+# %% CELL 3: Prepare English text corpus
+text = """
+deep learning helps computers learn patterns.
+deep learning models need data.
+neural networks learn from data.
+keras makes deep learning easier.
+tensorflow supports neural networks.
+machine learning improves with experience.
+artificial intelligence solves complex problems.
+word embeddings represent words as vectors.
+natural language processing understands human language.
+deep learning is useful in artificial intelligence.
+"""
+
+# %% CELL 4: Tokenize words
+words = re.findall(r"\b[a-z]+\b", text.lower())
+
+vocabulary = sorted(set(words))
+
+word_to_id = {
+    word: index for index, word in enumerate(vocabulary)
+}
+
+id_to_word = {
+    index: word for word, index in word_to_id.items()
+}
+
+encoded_words = [
+    word_to_id[word] for word in words
+]
+
+print("Total words:", len(words))
+print("Vocabulary size:", len(vocabulary))
+print("Vocabulary:", vocabulary)
+
+# %% CELL 5: Generate CBOW training data
+window_size = 2
+
+contexts = []
+targets = []
+
+for i in range(window_size, len(encoded_words) - window_size):
+
+    context = (
+        encoded_words[i-window_size:i]
+        + encoded_words[i+1:i+window_size+1]
+    )
+
+    contexts.append(context)
+    targets.append(encoded_words[i])
+
+contexts = np.array(contexts)
+targets = np.array(targets)
+
+print("Context shape:", contexts.shape)
+print("Target shape:", targets.shape)
+
+# %% CELL 6: Display sample context
+print("Context words:", [
+    id_to_word[i] for i in contexts[0]
+])
+
+print("Target word:", id_to_word[targets[0]])
+
+# %% CELL 7: Build CBOW model
+vocab_size = len(vocabulary)
+embedding_size = 100
+
+model = tf.keras.Sequential([
+    tf.keras.layers.Input(shape=(window_size * 2,)),
+
+    tf.keras.layers.Embedding(
+        input_dim=vocab_size,
+        output_dim=embedding_size
+    ),
+
+    tf.keras.layers.GlobalAveragePooling1D(),
+
+    tf.keras.layers.Dense(
+        vocab_size,
+        activation="softmax"
+    )
+])
+
+model.summary()
+
+# %% CELL 8: Compile model
+model.compile(
+    optimizer="adam",
+    loss="sparse_categorical_crossentropy",
+    metrics=["accuracy"]
+)
+
+# %% CELL 9: Train CBOW model
+history = model.fit(
+    contexts,
+    targets,
+    epochs=100,
+    batch_size=16,
+    verbose=1
+)
+
+print("Training completed!")
+
+# %% CELL 10: Predict word from context
+def predict_word(context_words):
+
+    context_ids = [
+        word_to_id[word] for word in context_words
+    ]
+
+    prediction = model.predict(
+        np.array([context_ids]),
+        verbose=0
+    )
+
+    predicted_id = np.argmax(prediction)
+
+    return id_to_word[predicted_id]
+
+context = ["deep", "helps", "computers", "learn"]
+
+print("Context:", context)
+print("Predicted word:", predict_word(context))
+
+# %% CELL 11: Save word vectors
+weights = model.layers[0].get_weights()[0]
+
+vector_file = Path.cwd() / "vectors.txt"
+
+with open(vector_file, "w", encoding="utf-8") as f:
+
+    f.write(f"{vocab_size} {embedding_size}\n")
+
+    for word, index in word_to_id.items():
+
+        vector = " ".join(
+            map(str, weights[index])
+        )
+
+        f.write(f"{word} {vector}\n")
+
+print("Word vectors saved at:", vector_file)
+
+# %% CELL 12: Find similar words
+def find_similar_words(word, top_n=5):
+
+    if word not in word_to_id:
+        print("Word not found in vocabulary.")
+        return
+
+    word_index = word_to_id[word]
+
+    similarities = cosine_similarity(
+        [weights[word_index]],
+        weights
+    )[0]
+
+    similar_indices = np.argsort(similarities)[::-1]
+
+    print("Words similar to:", word)
+
+    count = 0
+
+    for index in similar_indices:
+
+        if index == word_index:
+            continue
+
+        print(
+            id_to_word[index],
+            round(float(similarities[index]), 3)
+        )
+
+        count += 1
+
+        if count == top_n:
+            break
+
+find_similar_words("learning")
+
+# %% CELL 13: Plot training loss
+plt.plot(history.history["loss"])
+plt.xlabel("Epoch")
+plt.ylabel("Loss")
+plt.title("CBOW Training Loss")
+plt.show()

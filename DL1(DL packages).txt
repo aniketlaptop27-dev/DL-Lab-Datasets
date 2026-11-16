@@ -1,0 +1,57 @@
+
+# %% CELL 1: Install required packages
+%pip install -q tensorflow torch torchvision numpy
+
+# %% CELL 2: Import libraries
+import tensorflow as tf
+import keras
+import torch
+import numpy as np
+
+print("TensorFlow:", tf.__version__)
+print("Keras:", keras.__version__)
+print("PyTorch:", torch.__version__)
+
+# %% CELL 3: TensorFlow test
+a = tf.constant(5)
+b = tf.constant(7)
+
+print("TensorFlow addition:", tf.add(a, b).numpy())
+
+# %% CELL 4: Keras MNIST dataset demonstration
+(x_train, y_train), (x_test, y_test) = keras.datasets.mnist.load_data()
+
+print("MNIST training shape:", x_train.shape)
+print("MNIST testing shape:", x_test.shape)
+
+# %% CELL 5: Keras model demonstration
+model = keras.Sequential([
+    keras.layers.Input(shape=(28, 28)),
+    keras.layers.Flatten(),
+    keras.layers.Dense(128, activation="relu"),
+    keras.layers.Dense(10, activation="softmax")
+])
+
+model.summary()
+
+# %% CELL 6: PyTorch tensor demonstration
+x = torch.tensor([5, 10, 15])
+y = torch.tensor([2, 3, 4])
+
+print("PyTorch tensor:", x)
+print("PyTorch addition:", x + y)
+
+# %% CELL 7: Theano compatibility demonstration
+try:
+    import theano
+    import theano.tensor as T
+
+    x = T.dscalar("x")
+    y = T.dscalar("y")
+    addition = theano.function([x, y], x + y)
+
+    print("Theano addition:", addition(5, 7))
+
+except Exception as e:
+    print("Theano is not compatible with this Python environment.")
+    print("Reason:", str(e)[:200])
